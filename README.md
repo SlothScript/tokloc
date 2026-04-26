@@ -14,10 +14,11 @@ A fast CLI tool that counts lines of code and estimates tokens in your project.
 - Estimates token counts using type-specific density ratios
 - Classifies files by type (code, docs, data, html, image, other)
 - Respects `.gitignore` rules
-- Parallel processing using all CPU cores
+- Parallel processing using all CPU cores (configurable with -j)
 - Binary file detection and early skipping
 - Multiple path support (directories and files)
-- Include pattern filtering
+- Include/exclude pattern filtering
+- Accurate token counting with optional tokenizer (supports HuggingFace vocab files)
 
 ---
 
@@ -84,7 +85,35 @@ cmake --install .
 | `-v`, `--verbose` | Show scanning progress for directories |
 | `-a`, `--all` | Include ignored files (.gitignore rules) |
 | `-i`, `--include` | Include only files matching pattern (e.g., `*.cpp`, `*.py`) |
-| `-S`, `--no-parallel` | Disable parallel processing (single-threaded) |
+| `-x`, `--exclude` | Exclude files matching pattern (e.g., `*test*`, `*/tmp/*`) |
+| `-j`, `--jobs` | Number of parallel jobs (default: auto, -j1 = single threaded) |
+| `--tokenizer-path` | Load tokenizer vocabulary from local file |
+| `--tokenizer-url` | Load tokenizer from remote JSON URL (in-memory) |
+| `--tokenizer-url-max-mb` | Max download size for `--tokenizer-url` (default `100`) |
+
+### Tokenizer Sources
+
+Use a local tokenizer vocab file:
+
+```bash
+./build/tokloc . --tokenizer-path /path/to/vocab.txt
+```
+
+Use a remote tokenizer JSON URL (downloaded into memory, not written to disk):
+
+```bash
+./build/tokloc . --tokenizer-url https://example.com/tokenizer.json
+```
+
+Override the default max URL download size (100 MB):
+
+```bash
+./build/tokloc . --tokenizer-url https://example.com/tokenizer.json --tokenizer-url-max-mb 250
+```
+
+Notes:
+- `--tokenizer-path` and `--tokenizer-url` are mutually exclusive.
+- URL tokenizer content must be valid JSON; non-JSON payloads are rejected.
 
 ### Include Patterns
 
@@ -96,6 +125,17 @@ Include only specific file types:
 ./build/tokloc src/ -i "*.cpp" -i "*.h"
 ```
 
+### Exclude Patterns
+
+Exclude specific file types or directories:
+
+```bash
+./build/tokloc . -x "*test*"              # Exclude test files
+./build/tokloc . -x "*/tmp/*"             # Exclude tmp directories
+./build/tokloc . -i "*.cpp" -x "*test*"   # Include cpp files but exclude test files
+./build/tokloc . -x "*/node_modules/*" -x "*/build/*"  # Exclude multiple patterns
+```
+
 ### Verbose Mode
 
 ```bash
@@ -105,15 +145,14 @@ Include only specific file types:
 ### Example Output
 
 ```
-Type        Files   Lines     Empty     Tokens
+Type        Files   Lines     Empty     Tokens      
 -------------------------------------------------------
-code        7       1779      381       15994
-data        2       1949      27        37352
-docs        4       388       87        5025
-other       35      18547     2084      1374190
+code        3       2923      633       28373       
+docs        2       198       73        1663        
+other       1       3         0         7           
 -------------------------------------------------------
-Total       48      22663     2579      1432561
-Elapsed: 0.12s | files/s: 410.65 | lines/s: 215952.16 | tok/s: 12255948.05
+Total       6       3124      706       30043       
+Elapsed: 0.00s | files/s: 2515.63 | lines/s: 1605813.46 | tok/s: 12596202.06
 ```
 
 ### File Types
@@ -145,9 +184,14 @@ Images return 0 tokens.
 
 ## Performance
 
-- Uses parallel processing to utilize all CPU cores
+- Uses parallel processing to utilize all CPU cores (configurable with `-j`)
 - Binary files are detected and skipped early to save memory
 - Streaming file processing avoids loading entire files into memory
+- Large files (>10MB) are automatically chunked and processed in parallel
+- All chunks are processed regardless of thread count (no truncation)
+- Overlap handling preserves token boundaries at chunk edges
+- Fast JSON parsing with yyjson for tokenizer vocab files
+- Trie-based prefix matching for efficient tokenization
 
 ---
 
@@ -155,7 +199,7 @@ Images return 0 tokens.
 
 ```bash
 cd build
-./tests/tests # recommended
+./tests # recommended
 # or
 ctest -V
 ```
